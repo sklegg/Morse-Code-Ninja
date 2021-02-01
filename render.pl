@@ -6,9 +6,12 @@ use File::Copy;
 use File::Path;
 use File::Spec;
 use Getopt::Long;
+use Log::Log4perl;
 
 my @speeds;
 sub print_usage;
+Log::Log4perl->init("log.conf");
+my $logger = Log::Log4perl::get_logger();
 
 GetOptions(
   'i|input=s'         => \(my $input_filename),
@@ -31,6 +34,10 @@ GetOptions(
 my $speedSize = @speeds;
 @speeds = ($speedSize > 0) ? @speeds : ("15", "17", "20", "22", "25", "28", "30", "35", "40", "45", "50");
 
+$logger->info("Starting render.pl with options: input_filename: $input_filename, output_directory: $output_directory, speeds: @speeds, max_processes: $max_processes,
+               test: $test, word_limit: $word_limit, repeat_morse: $repeat_morse, courtesy_tone: $courtesy_tone, text_to_speech_engine: $text_to_speech_engine,
+               silence_between_morse_code_and_spoken_voice: $silence_between_morse_code_and_spoken_voice, silence_between_sets: $silence_between_sets, lang: $lang");
+
 if (! -d "$output_directory") {
   mkdir "$output_directory";
 }
@@ -51,12 +58,16 @@ my $t2sIOError = 2;
 my $filename = File::Spec->rel2abs($input_filename);
 
 print "processing file $filename\n";
+$logger->info("processing file $filename");
 
 my ($file, $dirs, $suffix) = fileparse($filename, qr/\.[^.]*/);
 print "dirs: $dirs, file: $file, suffix: $suffix\n";
+$logger->info("dirs: $dirs, file: $file, suffix: $suffix");
+
 $dirs = File::Spec->catfile($dirs, $output_directory);
 my $filename_base = File::Spec->catpath("", $dirs, $file);
 print "filename base: $filename_base\n";
+$logger->info("filename base: $filename_base");
 
 open my $fh, '<', $filename or die "Can't open file $!";
 my $file_content = do { local $/; <$fh> };
@@ -72,11 +83,13 @@ $safe_content =~ s/\.\s+(?=\.)/./g; # turn . . . into ...
 
 if(!$test) {
   print "---- Generating silence and sound effect mp3 files...\n";
-  #create silence
+  $logger->info("Generating silence and sound effect mp3 files...");
+
+  # create silence
   unlink "$output_directory/silence.mp3" if (-f "$output_directory/silence.mp3");
   @cmdLst = ("ffmpeg", "-f", "lavfi", "-i", "anullsrc=channel_layout=5.1:sample_rate=22050", "-t",
              "$silence_between_sets", "-codec:a", "libmp3lame", "-b:a", "256k", "$output_directory/silence.mp3");
-  # print("cmd-1: @cmdLst\n");
+  $logger->info("cmd-1: @cmdLst"); # print("cmd-1: @cmdLst\n");
   system(@cmdLst) == 0 or die "ERROR 1: @cmdLst failed, $!\n";
 
   # This is the silence between the Morse code and the spoken voice
@@ -84,7 +97,7 @@ if(!$test) {
   @cmdLst = ("ffmpeg", "-f", "lavfi", "-i", "anullsrc=channel_layout=5.1:sample_rate=22050",
              "-t", "$silence_between_morse_code_and_spoken_voice", "-codec:a", "libmp3lame",
              "-b:a", "256k", "$output_directory/silence1.mp3");
-  # print "cmd-2: @cmdLst\n";
+  $logger->info("cmd-2: @cmdLst"); # print "cmd-2: @cmdLst\n";
   system(@cmdLst) == 0 or die "ERROR 2: @cmdLst failed, $!\n";
 
   # This is the silence between the Morse code and the spoken voice
@@ -92,19 +105,19 @@ if(!$test) {
   @cmdLst = ("ffmpeg", "-f", "lavfi", "-i", "anullsrc=channel_layout=5.1:sample_rate=22050",
              "-t", "$silence_between_voice_and_repeat", "-codec:a", "libmp3lame",
              "-b:a", "256k", "$output_directory/silence2.mp3");
-  # print "cmd-3: @cmdLst\n";
+  $logger->info("cmd-3: @cmdLst"); # print "cmd-3: @cmdLst\n";
   system(@cmdLst) == 0 or die "ERROR 3: @cmdLst failed, $!\n";
 
-  #create quieter tone
+  # create quieter tone
   unlink "$output_directory/plink-softer.mp3" if (-f "$output_directory/plink-softer.mp3");
   $cmd = 'ffmpeg -i sounds/plink.mp3 -filter:a "volume=0.5" '.$output_directory.'/plink-softer.mp3';
-  print "cmd-4: $cmd\n";
+  $logger->info("cmd-4: @cmdLst"); # print "cmd-4: $cmd\n";
   system($cmd) == 0 or die "ERROR 4: $cmd failed, $!\n";
 
-  #create quieter tone
+  # create quieter tone
   unlink "$output_directory/pluck-softer.mp3" if (-f "$output_directory/pluck-softer.mp3");
   $cmd = 'ffmpeg -i sounds/pluck.mp3 -filter:a "volume=0.5" '.$output_directory.'/pluck-softer.mp3';
-  print "cmd-5: $cmd\n";
+  $logger->info("cmd-5: @cmdLst"); # print "cmd-5: $cmd\n";
   system($cmd) == 0 or die "ERROR 5: $cmd failed, $!\n";
 
   if (! -d "$output_directory/cache") {
@@ -115,12 +128,15 @@ if(!$test) {
 # Simple string trim function
 sub  trim {
   my $s = shift;
+  $logger->debug("trimming $s");
   $s =~ s/^\s+|\s+$//g;
+  $logger->debug("result $s");
   return $s
 };
 
 sub split_sentence_by_comma {
   my $sentence = trim($_[0]);
+  $logger->debug("split_sentence_by_comma starting $sentence");
   my @ret = ();
   my $accumulator = "";
 
@@ -143,12 +159,14 @@ sub split_sentence_by_comma {
   }
   push @ret, $accumulator;
 
+  $logger->debug("split_sentence_by_comma returns @ret");
+  $logger->debug("split_sentence_by_comma returns $accumulator");
   return @ret;
 }
 
 sub split_long_section {
   my $sentence = $_[0];
-
+  $logger->debug("split_long_section starting $sentence");
   my $word_count = 0;
   my $partial_sentence = "";
   my @ret = ();
@@ -172,11 +190,13 @@ sub split_long_section {
     push @ret, $partial_sentence;
   }
 
+  $logger->debug("split_long_section returns @ret");
   return @ret;
 }
 
 sub split_long_sentence {
   my $sentence = $_[0];
+  $logger->debug("split_long_sentence starting $sentence");
   $sentence =~ s/[-]/ /g;
   $sentence =~ s/:/,/g; # makes sense to substitute a colon for a comma
   $sentence =~ s/[^A-Za-z0-9\.\?,'\s]//g;
@@ -208,12 +228,13 @@ sub split_long_sentence {
   }
   push @ret, $accumulator;
 
+  $logger->debug("split_long_sentence returns $sentence");
   return @ret;
 }
 
 sub split_on_spoken_directive {
   my $raw = $_[0];
-
+  $logger->debug("split_on_spoken_directive starting $raw");
   #example "MD MD MD [Maryland|MD]^"
   if($raw =~ m/(.*?)\h*\[(.*?)(\|(.*?))?\]\h*([\^|\.|\?])$/) {
     my $sentence_part = $1.$5;
@@ -244,6 +265,7 @@ sub split_on_spoken_directive {
       $repeat_part = $sentence_part;
     }
 
+    $logger->debug("split_on_spoken_directive returns $sentence_part, $spoken_directive, $repeat_part");
     return ($sentence_part, $spoken_directive, $repeat_part);
   } else {
     #temporarily change word speed directive so we can filter invalid characters
@@ -254,7 +276,8 @@ sub split_on_spoken_directive {
     $raw =~ s/[^A-Za-z0-9\.\?<>,'\s]//g;
 
     $raw =~ s/XXXWORDSPEEDXXX/|/g;
-
+    
+    $logger->debug("split_on_spoken_directive returns $raw, $raw, $raw");
     return ($raw, $raw, $raw);
   }
 
@@ -296,17 +319,25 @@ foreach(@sentences) {
     $sentence =~ s/^\s+//g; #remove leading white space
     print $fh_structure "======> $sentence\n";
     print $fh_all "${sentence}\n";
+    $logger->info($fh_structure."======> $sentence");
+    $logger->info($fh_all."${sentence}");
 
     my($sentence_part, $spoken_directive, $repeat_part) = split_on_spoken_directive($sentence);
     if($word_limit == -1) {
       print "sentence_part: $sentence_part\n";
       print "spoken_directive: $spoken_directive\n";
       print "repeat_part: $repeat_part\n\n";
+      $logger->info("sentence_part: $sentence_part");
+      $logger->info("spoken_directive: $spoken_directive");
+      $logger->info("repeat_part: $repeat_part");
     }
     if($word_limit != -1 && $sentence_part ne $spoken_directive) {
       print "Error: Cannot have spoken directive with word limit defined!!! Use one or the other!\n";
       print "sentence_part: $sentence_part\n";
       print "spoken_directive: $spoken_directive\n\n";
+      $logger->info("sentence_part: $sentence_part");
+      $logger->info("spoken_directive: $spoken_directive");
+      $logger->error("Error: Cannot have spoken directive with word limit defined!!! Use one or the other!");
       exit 1;
     }
 
@@ -317,20 +348,25 @@ foreach(@sentences) {
     foreach(@partial_sentence) {
       print "---- loop 1 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -\n";
       print "---- debug: partial sentence: $_\n";
+      $logger->debug("---- loop 1 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -");
+      $logger->debug("---- debug: partial sentence: $_");
             
       my $num_chunks++;
       my $sentence_chunk = $_;
 
       if($_ !~ m/^\s*$/) {
         print $fh_structure "XXX $sentence_chunk\n";
+        $logger->info($fh_structure."XXX $sentence_chunk");
         if($word_limit != -1) {
           print "sentence and spoken chunk: $sentence_chunk\n";
+          $logger->info("sentence and spoken chunk: $sentence_chunk");
         }
 
         if(!$test) {
           $sentence_chunk =~ s/^\s+|\s+$//g; #extra space on the end adds new line!
           open(my $fh, '>', "$output_directory/sentence.txt");
           print $fh "$sentence_chunk\n";
+          $logger-info($fh."$sentence_chunk");
           close $fh;
 
           my $counter = sprintf("%05d",$count);
@@ -343,6 +379,7 @@ foreach(@sentences) {
               print("XXXXXX Fork 1 xXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXX");
               print("XXXXXXxXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXX");
               print("waiting on forks: fork_count: $fork_count     max_processes: $max_processes\n");
+              $logger->info("waiting on forks: fork_count: $fork_count     max_processes: $max_processes");
               wait();
               $fork_count--;
             }
@@ -352,7 +389,8 @@ foreach(@sentences) {
             if($pid) {
               # parent
               $fork_count++;
-              print "fork() -- pid: $pid\n";  
+              print "fork() -- pid: $pid\n";
+              $logger->info("fork() -- pid: $pid"); 
 
             } else {
               #child process
@@ -387,13 +425,13 @@ foreach(@sentences) {
                   $ebookCmd = $ebookCmd . "-e $farnsworth ";
               }
               $ebookCmd = $ebookCmd . "-o $output_directory/sentence-${speed} $output_directory/sentence.txt";
-              # print "cmd-6: $ebookCmd\n";
+              $logger->info("cmd-6: $ebookCmd"); # print "cmd-6: $ebookCmd\n";
               system($ebookCmd) == 0 or die "ERROR 6: $ebookCmd failed, $!\n";
 
               unlink "$output_directory/sentence-lower-volume-$speed.mp3" if (-f "$output_directory/sentence-lower-volume-$speed.mp3");
 
               $cmd = "ffmpeg -i $output_directory/sentence-${speed}0000.mp3 -filter:a \"volume=0.5\" $output_directory/sentence-lower-volume-${speed}.mp3\n";
-              # print "cmd-7: $cmd\n";
+              $logger->info("cmd-7: $cmd"); # print "cmd-7: $cmd\n";
               system($cmd) == 0 or die "ERROR 7: $cmd failed, $!\n";
               
               print "---- rename(sentence-lower-volume-${speed}.mp3, $filename_base-$counter-morse-$speed.mp3)\n";
@@ -410,16 +448,17 @@ foreach(@sentences) {
                   $cmd = $cmd . "-e $farnsworth ";
                 }
                 $cmd = $cmd . "$output_directory/sentence-repeat.txt";
-                # print "cmd-8: $cmd\n";
+                $logger->info("cmd-8: $cmd"); # print "cmd-8: $cmd\n";
                 system($cmd) == 0 or die "ERROR 8: $cmd failed, $!\n";
 
                 unlink "$output_directory/sentence-repeat-lower-volume-$speed.mp3" if (-f "$output_directory.sentence-repeat-lower-volume-$speed.mp3");
 
                 $cmd = sprintf('ffmpeg -i '.$output_directory.'/sentence-repeat-%d0000.mp3 -filter:a "volume=0.5" '.$output_directory.'/sentence-repeat-lower-volume-%d.mp3', $speed, $speed);
-                # print "cmd-9: $cmd\n";
+                $logger->info("cmd-9: $cmd"); # print "cmd-9: $cmd\n";
                 system($cmd);
                 if ($? == -1) {
                     print "ERROR: cmd: $cmd failed to execute: $!\n";
+                    $logger->error("cmd: $cmd failed to execute: $!");
                     exit 9;
                 }
                 elsif ($? & 127) {
