@@ -9,6 +9,8 @@ These must be installed and available in your Shell's PATH.
 * [ffmpeg](https://ffmpeg.org)
 * [lame](https://lame.sourceforge.io/)
 * [Perl 5](https://www.perl.org)
+  * Getopt::Long perl module
+  * Log::Log4perl perl module
 * [Python 3](https://www.python.org)
 * [Boto3](https://aws.amazon.com/sdk-for-python/)
 
