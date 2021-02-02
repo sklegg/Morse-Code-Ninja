@@ -464,12 +464,14 @@ foreach(@sentences) {
                 elsif ($? & 127) {
                     printf "cmd: $cmd died with signal %d, %s coredump\n",
                         ($? & 127), ($? & 128) ? 'with' : 'without';
+                    $logger->error("cmd: $cmd died");
                     exit 9;
                 }
                 else {
                     my $ecode = $? >> 8;
                     if ($ecode != 0) {
                         printf "ERROR cmd: $cmd unsuccessful: $!\n";
+                        $logger->error("cmd: $cmd unsuccessful: $!");
                         exit 9;
                     }
                 }
@@ -493,6 +495,7 @@ foreach(@sentences) {
           } else {
             open(my $fh_spoken, '>', "$filename_base-$counter.txt");
             print $fh_spoken "$spoken_directive\n";
+            $logger->info("$fh_spoken $spoken_directive");
             close $fh_spoken;
           }
 
@@ -501,27 +504,33 @@ foreach(@sentences) {
             my $textFile = File::Spec->rel2abs("$filename_base-${counter}");
               
             print "execute text2speech.py: \"$textFile\" $text_to_speech_engine $lang\n";
+            $logger->info("execute text2speech.py: \"$textFile\" $text_to_speech_engine $lang");
               
             $exit_code = system("./text2speech.py \"$textFile\" $text_to_speech_engine $lang");
             if ($? == -1) {
                 print "ERROR: text2speech.py failed to execute: $!\n";
+                $logger->error("text2speech.py failed to execute");
                 exit 1;
             }
             elsif ($? & 127) {
                 printf "text2speech.py died with signal %d, %s coredump\n",
                     ($? & 127), ($? & 128) ? 'with' : 'without';
+                $logger->error("text2speech.py died");
                 exit 1;
             }
             else {
                 my $ecode = $? >> 8;
                 printf "text2speech.py exited with value %d\n", $ecode;
+                $logger->info("text2speech.py exited with value $ecode");
 
                 if ($ecode == 1) {
                     print "text2speech.py exit_code: $exit_code\n";
+                    $logger->error("text2speech.py exit_code: $exit_code");
                     exit 1;
                 }
                 elsif ($ecode == $t2sIOError) {
                     print "ERROR: text2speech.py error reading aws.properties file\n";
+                    $logger->error("ERROR: text2speech.py error reading aws.properties file");
                     exit 1;
                 }
             }
@@ -533,10 +542,12 @@ foreach(@sentences) {
 
     if(scalar(@partial_sentence) > 1) {
       print "saying the whole sentence: $sentence\n";
+      $logger->info("saying the whole sentence: $sentence";);
 
       if(!$test) {
         open(my $fh, '>', $output_directory.'/sentence.txt');
         print $fh "$sentence\n";
+        $logger->info("$fh $sentence");
 
         my $counter = sprintf("%05d",$count);
         rename("$output_directory/sentence.txt ", '$filename_base-$counter-full.txt');
@@ -560,33 +571,34 @@ close $fh_structure;
 $count--;
 
 print "\n\nTotal sentences: $sentence_count\t segments: $count\n";
+$logger->info("Total sentences: $sentence_count segments: $count");
 if(!$test) {
   my $cwd = getcwd()."/$output_directory";
 
   #lame documentation -- https://svn.code.sf.net/p/lame/svn/trunk/lame/USAGE
   unlink "$cwd/silence-resampled.mp3";
   my $cmd = "lame --resample 44.1 -a -b 256 $cwd/silence.mp3 $cwd/silence-resampled.mp3";
-  # print "cmd-10: $cmd\n";
+  $logger->info("cmd-10: $cmd"); # print "cmd-10: $cmd\n";
   system($cmd) == 0 or die "ERROR 10: $cmd failed, $!\n";
 
   unlink "$cwd/silence-resampled1.mp3";
   $cmd = "lame --resample 44.1 -a -b 256 $cwd/silence1.mp3 $cwd/silence-resampled1.mp3";
-  # print "cmd-11: $cmd\n";
+  $logger->info("cmd-11: $cmd"); # print "cmd-11: $cmd\n";
   system($cmd) == 0 or die "ERROR 11: $cmd failed, $!\n";;
 
   unlink "$cwd/silence-resampled2.mp3";
   $cmd = "lame --resample 44.1 -a -b 256 $cwd/silence2.mp3 $cwd/silence-resampled2.mp3";
-  # print "cmd-12: $cmd\n";
+  $logger->info("cmd-12: $cmd"); # print "cmd-12: $cmd\n";
   system($cmd) == 0 or die "ERROR 12: $cmd failed, $!\n";;
 
   unlink "$cwd/pluck-softer-resampled.mp3";
   $cmd = "lame --resample 44.1 -a -b 256 $cwd/pluck-softer.mp3 $cwd/pluck-softer-resampled.mp3";
-  # print "cmd-13: $cmd\n";
+  $logger->info("cmd-13: $cmd"); # print "cmd-13: $cmd\n";
   system($cmd) == 0 or die "ERROR 13: $cmd failed, $!\n";;
 
   unlink "$cwd/plink-softer-resampled.mp3";
   $cmd = "lame --resample 44.1 -a -b 256 $cwd/plink-softer.mp3 $cwd/plink-softer-resampled.mp3";
-  # print "cmd-14: $cmd\n";
+  $logger->info("cmd-14: $cmd"); # print "cmd-14: $cmd\n";
   system($cmd) == 0 or die "ERROR 14: $cmd failed, $!\n";;
 
   my $fork_count = 0;
@@ -605,6 +617,7 @@ if(!$test) {
       print("XXXXXX Fork 2 xXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXX\n");
       print("XXXXXXxXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXX\n");
       print("waiting on forks: fork_count: $fork_count     max_processes: $max_processes\n");
+      $logger-info("waiting on forks: fork_count: $fork_count     max_processes: $max_processes");
       wait();
       $fork_count--;
     }
@@ -625,13 +638,15 @@ if(!$test) {
         #if full sentence
         if(-e "$filename_base-$counter-full-voice.mp3") {
           print $fh_list "file '$cwd/pluck-softer-resampled.mp3'\nfile '$cwd/silence-resampled.mp3'\nfile '$filename_base-$counter-full-voice-resampled-$speed.mp3'\nfile '$cwd/silence-resampled.mp3'\n";
+          $logger->info("$fh_list file '$cwd/pluck-softer-resampled.mp3' file '$cwd/silence-resampled.mp3' file '$filename_base-$counter-full-voice-resampled-$speed.mp3' file '$cwd/silence-resampled.mp3'");
 
           @cmdLst = ('lame', '--resample', '44.1', '-a', '-b', '256', "$filename_base-$counter-full-voice.mp3", "$filename_base-$counter-full-voice-resampled-$speed.mp3");
-          # print "cmdLst-15:\n";
+          $logger->info("cmd-15: @cmdLst"); # print "cmdLst-15:\n";
           foreach (@cmdLst) {
               print "-- $_\n";
+              $logger->info("-- $_");
           }
-          # print "cmd-16: @cmdLst\n";
+          $logger->info("cmd-16: @cmdLst"); # print "cmd-16: @cmdLst\n";
           system(@cmdLst) == 0 or die "ERROR 16: @cmdLst failed, $!\n";
 
         } else {
@@ -640,38 +655,43 @@ if(!$test) {
             $first_for_given_speed = 0;
           } elsif ($courtesy_tone != 0) {
             print $fh_list "file '$cwd/plink-softer-resampled.mp3'\n";
+            $logger->info("$fh_list file '$cwd/plink-softer-resampled.mp3'");
           }
 
           @cmdLst = ("lame", "--resample", "44.1", "-a", "-b", "256",
                      "$filename_base-$counter-morse-$speed.mp3",
                      "$filename_base-$counter-morse-$speed-resampled.mp3");
-          # print "cmdLst-16: @cmdLst\n";
+          $logger->info("cmd-16: @cmdLst"); # print "cmdLst-16: @cmdLst\n";
           system(@cmdLst) == 0 or die "ERROR: @cmdLst failed, $!\n";
 
           @cmdLst = ("lame", "--resample", "44.1", "-a", "-b", "256",
                      "$filename_base-$counter-voice.mp3",
                      "$filename_base-$counter-voice-resampled-$speed.mp3");
-          # print "cmd-17: @cmdLst\n";
+          $logger->info("cmd-17: @cmdLst"); # print "cmd-17: @cmdLst\n";
           system(@cmdLst) == 0 or die "ERROR 17: @cmdLst failed, $!\n";
 
           print $fh_list "file '$cwd/silence-resampled.mp3'\nfile '$filename_base-$counter-morse-$speed-resampled.mp3'\nfile '$cwd/silence-resampled1.mp3'\nfile '$filename_base-$counter-voice-resampled-$speed.mp3'\n";
+          $logger->info("$fh_list file '$cwd/silence-resampled.mp3' file '$filename_base-$counter-morse-$speed-resampled.mp3' file '$cwd/silence-resampled1.mp3' file '$filename_base-$counter-voice-resampled-$speed.mp3'";);
 
           if($repeat_morse == 0) {
             print $fh_list "file '$cwd/silence-resampled.mp3'\n";
+            $logger->info("$fh_list file '$cwd/silence-resampled.mp3'\n");
           } else {
             print $fh_list "file '$cwd/silence-resampled2.mp3'\n";
+            $logger->info("$fh_list file '$cwd/silence-resampled2.mp3'\n");
             if (-e "$filename_base-$counter-repeat-morse-$speed.mp3") {
               @cmdLst = ("lame", "--resample", "44.1", "-a", "-b", "256",
                          "$filename_base-$counter-repeat-morse-$speed.mp3",
                          "$filename_base-$counter-repeat-morse-$speed-resampled.mp3");
-              # print "cmd-18: @cmdLst\n";
+              $logger->info("cmd-18: @cmdLst"); # print "cmd-18: @cmdLst\n";
               system(@cmdLst) == 0 or die "ERROR 18: @cmdLst failed, $!\n";
 
               print $fh_list "file '$filename_base-$counter-repeat-morse-$speed-resampled.mp3'\nfile '$cwd/silence-resampled.mp3'\n";
-
+              $logger->info("$fh_list file '$filename_base-$counter-repeat-morse-$speed-resampled.mp3' file '$cwd/silence-resampled.mp3'");
             } else {
 
               print $fh_list "file '$filename_base-$counter-morse-$speed-resampled.mp3'\nfile '$cwd/silence-resampled.mp3'\n";
+              $logger->info("$fh_list file '$filename_base-$counter-morse-$speed-resampled.mp3' file '$cwd/silence-resampled.mp3'");
             }
           }
 
@@ -684,7 +704,7 @@ if(!$test) {
                  "$filename_base-list-${speed}wpm.txt", "-codec:a", "libmp3lame", "-metadata",
                  "title=\"$filename_base $speed"."wpm\"", "-c", "copy",
                  "$filename_base-$speed"."wpm.mp3");
-      # print "cmd-19: @cmdLst\n";
+      $logger->info("cmd-19: @cmdLst"); # print "cmd-19: @cmdLst\n";
       system(@cmdLst) == 0 or die "ERROR 19: @cmdLst failed, $!\n";
 
       exit;
@@ -699,6 +719,7 @@ if(!$test) {
 
   #remove temporary files
   print "Clean up temporary files...\n";
+  $logger->info("Clean up temporary files...");
   
   for (my $i=1; $i <= $count; $i++) {
     my $counter = sprintf("%05d",$i);
