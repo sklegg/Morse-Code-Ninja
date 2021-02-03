@@ -69,7 +69,12 @@ my $filename_base = File::Spec->catpath("", $dirs, $file);
 print "filename base: $filename_base\n";
 $logger->info("filename base: $filename_base");
 
-open my $fh, '<', $filename or die "Can't open file $!";
+my $fh;
+unless(open $fh, '<', $filename) {
+  $logger->error("Can't open file $!");
+  die "Can't open file $!";
+}
+
 my $file_content = do { local $/; <$fh> };
 close $fh;
 
@@ -90,7 +95,10 @@ if(!$test) {
   @cmdLst = ("ffmpeg", "-f", "lavfi", "-i", "anullsrc=channel_layout=5.1:sample_rate=22050", "-t",
              "$silence_between_sets", "-codec:a", "libmp3lame", "-b:a", "256k", "$output_directory/silence.mp3");
   $logger->info("cmd-1: @cmdLst"); # print("cmd-1: @cmdLst\n");
-  system(@cmdLst) == 0 or die "ERROR 1: @cmdLst failed, $!\n";
+  if (system(@cmdLst) != 0) {
+    $logger->error("ERROR 1: @cmdLst failed, $!");
+    die "ERROR 1: @cmdLst failed, $!\n";
+  }
 
   # This is the silence between the Morse code and the spoken voice
   unlink "$output_directory/silence1.mp3" if (-f "$output_directory/silence1.mp3");
@@ -98,7 +106,10 @@ if(!$test) {
              "-t", "$silence_between_morse_code_and_spoken_voice", "-codec:a", "libmp3lame",
              "-b:a", "256k", "$output_directory/silence1.mp3");
   $logger->info("cmd-2: @cmdLst"); # print "cmd-2: @cmdLst\n";
-  system(@cmdLst) == 0 or die "ERROR 2: @cmdLst failed, $!\n";
+  if (system(@cmdLst) != 0) {
+    $logger->error("ERROR 2: @cmdLst failed, $!");
+    die "ERROR 2: @cmdLst failed, $!\n";
+  }
 
   # This is the silence between the Morse code and the spoken voice
   unlink "$output_directory/silence2.mp3" if (-f "$output_directory/silence2.mp3");
@@ -106,19 +117,28 @@ if(!$test) {
              "-t", "$silence_between_voice_and_repeat", "-codec:a", "libmp3lame",
              "-b:a", "256k", "$output_directory/silence2.mp3");
   $logger->info("cmd-3: @cmdLst"); # print "cmd-3: @cmdLst\n";
-  system(@cmdLst) == 0 or die "ERROR 3: @cmdLst failed, $!\n";
+  if (system(@cmdLst) != 0) {
+    $logger->error("ERROR 3: @cmdLst failed, $!");
+    die "ERROR 3: @cmdLst failed, $!\n";
+  }
 
   # create quieter tone
   unlink "$output_directory/plink-softer.mp3" if (-f "$output_directory/plink-softer.mp3");
   $cmd = 'ffmpeg -i sounds/plink.mp3 -filter:a "volume=0.5" '.$output_directory.'/plink-softer.mp3';
   $logger->info("cmd-4: @cmdLst"); # print "cmd-4: $cmd\n";
-  system($cmd) == 0 or die "ERROR 4: $cmd failed, $!\n";
+  if (system(@cmdLst) != 0) {
+    $logger->error("ERROR 4: @cmdLst failed, $!");
+    die "ERROR 4: @cmdLst failed, $!\n";
+  }
 
   # create quieter tone
   unlink "$output_directory/pluck-softer.mp3" if (-f "$output_directory/pluck-softer.mp3");
   $cmd = 'ffmpeg -i sounds/pluck.mp3 -filter:a "volume=0.5" '.$output_directory.'/pluck-softer.mp3';
   $logger->info("cmd-5: @cmdLst"); # print "cmd-5: $cmd\n";
-  system($cmd) == 0 or die "ERROR 5: $cmd failed, $!\n";
+  if (system(@cmdLst) != 0) {
+    $logger->error("ERROR 5: @cmdLst failed, $!");
+    die "ERROR 5: @cmdLst failed, $!\n";
+  }
 
   if (! -d "$output_directory/cache") {
       mkdir "$output_directory/cache";
@@ -366,7 +386,7 @@ foreach(@sentences) {
           $sentence_chunk =~ s/^\s+|\s+$//g; #extra space on the end adds new line!
           open(my $fh, '>', "$output_directory/sentence.txt");
           print $fh "$sentence_chunk\n";
-          $logger-info($fh."$sentence_chunk");
+          $logger->info($fh."$sentence_chunk");
           close $fh;
 
           my $counter = sprintf("%05d",$count);
@@ -426,21 +446,29 @@ foreach(@sentences) {
               }
               $ebookCmd = $ebookCmd . "-o $output_directory/sentence-${speed} $output_directory/sentence.txt";
               $logger->info("cmd-6: $ebookCmd"); # print "cmd-6: $ebookCmd\n";
-              system($ebookCmd) == 0 or die "ERROR 6: $ebookCmd failed, $!\n";
+              if (system($ebookCmd) != 0) {
+                $logger->error("ERROR 6: $ebookCmd failed, $!");
+                die "ERROR 6: $ebookCmd failed, $!\n";
+              }
 
               unlink "$output_directory/sentence-lower-volume-$speed.mp3" if (-f "$output_directory/sentence-lower-volume-$speed.mp3");
 
               $cmd = "ffmpeg -i $output_directory/sentence-${speed}0000.mp3 -filter:a \"volume=0.5\" $output_directory/sentence-lower-volume-${speed}.mp3\n";
               $logger->info("cmd-7: $cmd"); # print "cmd-7: $cmd\n";
-              system($cmd) == 0 or die "ERROR 7: $cmd failed, $!\n";
+              if (system($cmd) != 0) {
+                $logger->error("ERROR 7: $cmd failed, $!");
+                die "ERROR 7: $cmd failed, $!\n";
+              }
               
               print "---- rename(sentence-lower-volume-${speed}.mp3, $filename_base-$counter-morse-$speed.mp3)\n";
+              $logger->info("rename(sentence-lower-volume-${speed}.mp3, $filename_base-$counter-morse-$speed.mp3)");
               rename("$output_directory/sentence-lower-volume-$speed.mp3", "$filename_base-$counter-morse-$speed.mp3");
 
               # generate repeat section if it is different than the sentence
               if($repeat_morse != 0 && $word_limit == -1 && $repeat_part ne $sentence_part) {
                 open(my $fh_repeat, '>', "$output_directory/sentence-repeat.txt");
                 print $fh_repeat "$repeat_part\n";
+                $logger->info("$fh_repeat $repeat_part");
                 close $fh_repeat;
 
                 $cmd = "ebook2cw $lang_option -R $rise_and_fall_time -F $rise_and_fall_time $extra_word_spacing_option -f 700 -w $speed -s 44100 -o $output_directory/sentence-repeat-${speed} ";
@@ -449,7 +477,10 @@ foreach(@sentences) {
                 }
                 $cmd = $cmd . "$output_directory/sentence-repeat.txt";
                 $logger->info("cmd-8: $cmd"); # print "cmd-8: $cmd\n";
-                system($cmd) == 0 or die "ERROR 8: $cmd failed, $!\n";
+                if (system($cmd) != 0) {
+                   $logger->error("ERROR 8: $cmd failed, $!");
+                   die "ERROR 8: $cmd failed, $!\n";
+                }
 
                 unlink "$output_directory/sentence-repeat-lower-volume-$speed.mp3" if (-f "$output_directory.sentence-repeat-lower-volume-$speed.mp3");
 
@@ -542,7 +573,7 @@ foreach(@sentences) {
 
     if(scalar(@partial_sentence) > 1) {
       print "saying the whole sentence: $sentence\n";
-      $logger->info("saying the whole sentence: $sentence";);
+      $logger->info("saying the whole sentence: $sentence");
 
       if(!$test) {
         open(my $fh, '>', $output_directory.'/sentence.txt');
@@ -579,27 +610,42 @@ if(!$test) {
   unlink "$cwd/silence-resampled.mp3";
   my $cmd = "lame --resample 44.1 -a -b 256 $cwd/silence.mp3 $cwd/silence-resampled.mp3";
   $logger->info("cmd-10: $cmd"); # print "cmd-10: $cmd\n";
-  system($cmd) == 0 or die "ERROR 10: $cmd failed, $!\n";
+  if (system($cmd) != 0) {
+    $logger->error("ERROR 10: $cmd failed, $!");
+    die "ERROR 10: $cmd failed, $!\n";
+  }
 
   unlink "$cwd/silence-resampled1.mp3";
   $cmd = "lame --resample 44.1 -a -b 256 $cwd/silence1.mp3 $cwd/silence-resampled1.mp3";
   $logger->info("cmd-11: $cmd"); # print "cmd-11: $cmd\n";
-  system($cmd) == 0 or die "ERROR 11: $cmd failed, $!\n";;
+  if (system($cmd) != 0) {
+    $logger->error("ERROR 11: $cmd failed, $!");
+    die "ERROR 11: $cmd failed, $!\n";
+  }
 
   unlink "$cwd/silence-resampled2.mp3";
   $cmd = "lame --resample 44.1 -a -b 256 $cwd/silence2.mp3 $cwd/silence-resampled2.mp3";
   $logger->info("cmd-12: $cmd"); # print "cmd-12: $cmd\n";
-  system($cmd) == 0 or die "ERROR 12: $cmd failed, $!\n";;
+  if (system($cmd) != 0) {
+    $logger->error("ERROR 12: $cmd failed, $!");
+    die "ERROR 12: $cmd failed, $!\n";
+  }
 
   unlink "$cwd/pluck-softer-resampled.mp3";
   $cmd = "lame --resample 44.1 -a -b 256 $cwd/pluck-softer.mp3 $cwd/pluck-softer-resampled.mp3";
   $logger->info("cmd-13: $cmd"); # print "cmd-13: $cmd\n";
-  system($cmd) == 0 or die "ERROR 13: $cmd failed, $!\n";;
+  if (system($cmd) != 0) {
+    $logger->error("ERROR 13: $cmd failed, $!");
+    die "ERROR 13: $cmd failed, $!\n";
+  }
 
   unlink "$cwd/plink-softer-resampled.mp3";
   $cmd = "lame --resample 44.1 -a -b 256 $cwd/plink-softer.mp3 $cwd/plink-softer-resampled.mp3";
   $logger->info("cmd-14: $cmd"); # print "cmd-14: $cmd\n";
-  system($cmd) == 0 or die "ERROR 14: $cmd failed, $!\n";;
+  if (system($cmd) != 0) {
+    $logger->error("ERROR 14: $cmd failed, $!");
+    die "ERROR 14: $cmd failed, $!\n";
+  }
 
   my $fork_count = 0;
   foreach(@speeds) {
@@ -647,7 +693,10 @@ if(!$test) {
               $logger->info("-- $_");
           }
           $logger->info("cmd-16: @cmdLst"); # print "cmd-16: @cmdLst\n";
-          system(@cmdLst) == 0 or die "ERROR 16: @cmdLst failed, $!\n";
+          if (system(@cmdLst) != 0) {
+            $logger->error("ERROR 16: @cmdLst failed, $!");
+            die "ERROR 16: @cmdLst failed, $!\n";
+          }
 
         } else {
           # Not full sentence\n";
@@ -662,16 +711,22 @@ if(!$test) {
                      "$filename_base-$counter-morse-$speed.mp3",
                      "$filename_base-$counter-morse-$speed-resampled.mp3");
           $logger->info("cmd-16: @cmdLst"); # print "cmdLst-16: @cmdLst\n";
-          system(@cmdLst) == 0 or die "ERROR: @cmdLst failed, $!\n";
+          if (system(@cmdLst) != 0) {
+            $logger->error("ERROR 16: @cmdLst failed, $!");
+            die "ERROR 16: @cmdLst failed, $!\n";
+          }
 
           @cmdLst = ("lame", "--resample", "44.1", "-a", "-b", "256",
                      "$filename_base-$counter-voice.mp3",
                      "$filename_base-$counter-voice-resampled-$speed.mp3");
           $logger->info("cmd-17: @cmdLst"); # print "cmd-17: @cmdLst\n";
-          system(@cmdLst) == 0 or die "ERROR 17: @cmdLst failed, $!\n";
+          if (system(@cmdLst) != 0) {
+            $logger->error("ERROR 17: @cmdLst failed, $!");
+            die "ERROR 17: @cmdLst failed, $!\n";
+          }
 
           print $fh_list "file '$cwd/silence-resampled.mp3'\nfile '$filename_base-$counter-morse-$speed-resampled.mp3'\nfile '$cwd/silence-resampled1.mp3'\nfile '$filename_base-$counter-voice-resampled-$speed.mp3'\n";
-          $logger->info("$fh_list file '$cwd/silence-resampled.mp3' file '$filename_base-$counter-morse-$speed-resampled.mp3' file '$cwd/silence-resampled1.mp3' file '$filename_base-$counter-voice-resampled-$speed.mp3'";);
+          $logger->info("$fh_list file '$cwd/silence-resampled.mp3' file '$filename_base-$counter-morse-$speed-resampled.mp3' file '$cwd/silence-resampled1.mp3' file '$filename_base-$counter-voice-resampled-$speed.mp3'");
 
           if($repeat_morse == 0) {
             print $fh_list "file '$cwd/silence-resampled.mp3'\n";
@@ -684,7 +739,10 @@ if(!$test) {
                          "$filename_base-$counter-repeat-morse-$speed.mp3",
                          "$filename_base-$counter-repeat-morse-$speed-resampled.mp3");
               $logger->info("cmd-18: @cmdLst"); # print "cmd-18: @cmdLst\n";
-              system(@cmdLst) == 0 or die "ERROR 18: @cmdLst failed, $!\n";
+              if (system(@cmdLst) != 0) {
+                $logger->error("ERROR 18: @cmdLst failed, $!");
+                die "ERROR 18: @cmdLst failed, $!\n";
+              }
 
               print $fh_list "file '$filename_base-$counter-repeat-morse-$speed-resampled.mp3'\nfile '$cwd/silence-resampled.mp3'\n";
               $logger->info("$fh_list file '$filename_base-$counter-repeat-morse-$speed-resampled.mp3' file '$cwd/silence-resampled.mp3'");
@@ -705,7 +763,10 @@ if(!$test) {
                  "title=\"$filename_base $speed"."wpm\"", "-c", "copy",
                  "$filename_base-$speed"."wpm.mp3");
       $logger->info("cmd-19: @cmdLst"); # print "cmd-19: @cmdLst\n";
-      system(@cmdLst) == 0 or die "ERROR 19: @cmdLst failed, $!\n";
+      if (system(@cmdLst) != 0) {
+        $logger->error("ERROR 19: @cmdLst failed, $!");
+        die "ERROR 19: @cmdLst failed, $!\n";
+      }
 
       exit;
     }
