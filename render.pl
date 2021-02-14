@@ -125,19 +125,19 @@ if(!$test) {
   # create quieter tone
   unlink "$output_directory/plink-softer.mp3" if (-f "$output_directory/plink-softer.mp3");
   $cmd = 'ffmpeg -i sounds/plink.mp3 -filter:a "volume=0.5" '.$output_directory.'/plink-softer.mp3';
-  $logger->info("cmd-4: @cmdLst"); # print "cmd-4: $cmd\n";
-  if (system(@cmdLst) != 0) {
-    $logger->error("ERROR 4: @cmdLst failed, $!");
-    die "ERROR 4: @cmdLst failed, $!\n";
+  $logger->info("cmd-4: $cmd"); # print "cmd-4: $cmd\n";
+  if (system($cmd) != 0) {
+    $logger->error("ERROR 4: $cmd failed, $!");
+    die "ERROR 4: $cmd failed, $!\n";
   }
 
   # create quieter tone
   unlink "$output_directory/pluck-softer.mp3" if (-f "$output_directory/pluck-softer.mp3");
   $cmd = 'ffmpeg -i sounds/pluck.mp3 -filter:a "volume=0.5" '.$output_directory.'/pluck-softer.mp3';
-  $logger->info("cmd-5: @cmdLst"); # print "cmd-5: $cmd\n";
-  if (system(@cmdLst) != 0) {
-    $logger->error("ERROR 5: @cmdLst failed, $!");
-    die "ERROR 5: @cmdLst failed, $!\n";
+  $logger->info("cmd-5: $cmd"); # print "cmd-5: $cmd\n";
+  if (system($cmd) != 0) {
+    $logger->error("ERROR 5: $cmd failed, $!");
+    die "ERROR 5: $cmd failed, $!\n";
   }
 
   if (! -d "$output_directory/cache") {
