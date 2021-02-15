@@ -10,7 +10,7 @@ use Log::Log4perl;
 
 my @speeds;
 sub print_usage;
-Log::Log4perl->init("log.conf");
+Log::Log4perl->init("/opt/Morse-Code-Ninja-main/log.conf");
 my $logger = Log::Log4perl::get_logger();
 
 GetOptions(
@@ -92,7 +92,7 @@ if(!$test) {
 
   # create silence
   unlink "$output_directory/silence.mp3" if (-f "$output_directory/silence.mp3");
-  @cmdLst = ("ffmpeg", "-f", "lavfi", "-i", "anullsrc=channel_layout=5.1:sample_rate=22050", "-t",
+  @cmdLst = ("ffmpeg", "-loglevel", "fatal", "-f", "lavfi", "-i", "anullsrc=channel_layout=5.1:sample_rate=22050", "-t",
              "$silence_between_sets", "-codec:a", "libmp3lame", "-b:a", "256k", "$output_directory/silence.mp3");
   $logger->info("cmd-1: @cmdLst"); # print("cmd-1: @cmdLst\n");
   if (system(@cmdLst) != 0) {
@@ -102,7 +102,7 @@ if(!$test) {
 
   # This is the silence between the Morse code and the spoken voice
   unlink "$output_directory/silence1.mp3" if (-f "$output_directory/silence1.mp3");
-  @cmdLst = ("ffmpeg", "-f", "lavfi", "-i", "anullsrc=channel_layout=5.1:sample_rate=22050",
+  @cmdLst = ("ffmpeg", "-loglevel", "fatal", "-f", "lavfi", "-i", "anullsrc=channel_layout=5.1:sample_rate=22050",
              "-t", "$silence_between_morse_code_and_spoken_voice", "-codec:a", "libmp3lame",
              "-b:a", "256k", "$output_directory/silence1.mp3");
   $logger->info("cmd-2: @cmdLst"); # print "cmd-2: @cmdLst\n";
@@ -113,7 +113,7 @@ if(!$test) {
 
   # This is the silence between the Morse code and the spoken voice
   unlink "$output_directory/silence2.mp3" if (-f "$output_directory/silence2.mp3");
-  @cmdLst = ("ffmpeg", "-f", "lavfi", "-i", "anullsrc=channel_layout=5.1:sample_rate=22050",
+  @cmdLst = ("ffmpeg", "-loglevel", "fatal", "-f", "lavfi", "-i", "anullsrc=channel_layout=5.1:sample_rate=22050",
              "-t", "$silence_between_voice_and_repeat", "-codec:a", "libmp3lame",
              "-b:a", "256k", "$output_directory/silence2.mp3");
   $logger->info("cmd-3: @cmdLst"); # print "cmd-3: @cmdLst\n";
@@ -124,7 +124,7 @@ if(!$test) {
 
   # create quieter tone
   unlink "$output_directory/plink-softer.mp3" if (-f "$output_directory/plink-softer.mp3");
-  $cmd = 'ffmpeg -i sounds/plink.mp3 -filter:a "volume=0.5" '.$output_directory.'/plink-softer.mp3';
+  $cmd = 'ffmpeg -loglevel fatal -i sounds/plink.mp3 -filter:a "volume=0.5" '.$output_directory.'/plink-softer.mp3';
   $logger->info("cmd-4: $cmd"); # print "cmd-4: $cmd\n";
   if (system($cmd) != 0) {
     $logger->error("ERROR 4: $cmd failed, $!");
@@ -133,7 +133,7 @@ if(!$test) {
 
   # create quieter tone
   unlink "$output_directory/pluck-softer.mp3" if (-f "$output_directory/pluck-softer.mp3");
-  $cmd = 'ffmpeg -i sounds/pluck.mp3 -filter:a "volume=0.5" '.$output_directory.'/pluck-softer.mp3';
+  $cmd = 'ffmpeg -loglevel fatal -i sounds/pluck.mp3 -filter:a "volume=0.5" '.$output_directory.'/pluck-softer.mp3';
   $logger->info("cmd-5: $cmd"); # print "cmd-5: $cmd\n";
   if (system($cmd) != 0) {
     $logger->error("ERROR 5: $cmd failed, $!");
@@ -453,7 +453,7 @@ foreach(@sentences) {
 
               unlink "$output_directory/sentence-lower-volume-$speed.mp3" if (-f "$output_directory/sentence-lower-volume-$speed.mp3");
 
-              $cmd = "ffmpeg -i $output_directory/sentence-${speed}0000.mp3 -filter:a \"volume=0.5\" $output_directory/sentence-lower-volume-${speed}.mp3\n";
+              $cmd = "ffmpeg -loglevel fatal -i $output_directory/sentence-${speed}0000.mp3 -filter:a \"volume=0.5\" $output_directory/sentence-lower-volume-${speed}.mp3\n";
               $logger->info("cmd-7: $cmd"); # print "cmd-7: $cmd\n";
               if (system($cmd) != 0) {
                 $logger->error("ERROR 7: $cmd failed, $!");
@@ -484,7 +484,7 @@ foreach(@sentences) {
 
                 unlink "$output_directory/sentence-repeat-lower-volume-$speed.mp3" if (-f "$output_directory.sentence-repeat-lower-volume-$speed.mp3");
 
-                $cmd = sprintf('ffmpeg -i '.$output_directory.'/sentence-repeat-%d0000.mp3 -filter:a "volume=0.5" '.$output_directory.'/sentence-repeat-lower-volume-%d.mp3', $speed, $speed);
+                $cmd = sprintf('ffmpeg -loglevel fatal -i '.$output_directory.'/sentence-repeat-%d0000.mp3 -filter:a "volume=0.5" '.$output_directory.'/sentence-repeat-lower-volume-%d.mp3', $speed, $speed);
                 $logger->info("cmd-9: $cmd"); # print "cmd-9: $cmd\n";
                 system($cmd);
                 if ($? == -1) {
@@ -537,7 +537,7 @@ foreach(@sentences) {
             print "execute text2speech.py: \"$textFile\" $text_to_speech_engine $lang\n";
             $logger->info("execute text2speech.py: \"$textFile\" $text_to_speech_engine $lang");
               
-            $exit_code = system("./text2speech.py \"$textFile\" $text_to_speech_engine $lang");
+            $exit_code = system("/opt/Morse-Code-Ninja-main/text2speech.py \"$textFile\" $text_to_speech_engine $lang");
             if ($? == -1) {
                 print "ERROR: text2speech.py failed to execute: $!\n";
                 $logger->error("text2speech.py failed to execute");
@@ -548,8 +548,7 @@ foreach(@sentences) {
                     ($? & 127), ($? & 128) ? 'with' : 'without';
                 $logger->error("text2speech.py died");
                 exit 1;
-            }
-            else {
+            } else {
                 my $ecode = $? >> 8;
                 printf "text2speech.py exited with value %d\n", $ecode;
                 $logger->info("text2speech.py exited with value $ecode");
@@ -758,7 +757,7 @@ if(!$test) {
       }
       close $fh_list;
       #see -- https://superuser.com/questions/314239/how-to-join-merge-many-mp3-files  or   https://trac.ffmpeg.org/wiki/Concatenate
-      @cmdLst = ("ffmpeg", "-f", "concat", "-safe", "0", "-i", 
+      @cmdLst = ("ffmpeg", "-loglevel", "fatal", "-f", "concat", "-safe", "0", "-i", 
                  "$filename_base-list-${speed}wpm.txt", "-codec:a", "libmp3lame", "-metadata",
                  "title=\"$filename_base $speed"."wpm\"", "-c", "copy",
                  "$filename_base-$speed"."wpm.mp3");
