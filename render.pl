@@ -28,6 +28,7 @@ GetOptions(
   'sv|silencevoice=s' => \(my $silence_between_voice_and_repeat = "1"), # $silence_between_sets; # typically 1 second
   'x|extraspace=i'    => \(my $extra_word_spacing = 0), # 0 is no extra spacing. 0.5 is half word extra spacing. 1 is twice the word space. 1.5 is 2.5x the word space. etc
   'l|lang=s'          => \(my $lang = "ENGLISH"), # ENGLISH | SWEDISH
+  'cloud'             => \(my $cloud = ''),
 ) or print_usage();
 
 # set default value for speeds here as it is too complex to do it inside the GetOptions call above
@@ -803,6 +804,10 @@ if(!$test) {
   unlink glob("$output_directory/plink*.mp3");
   unlink "$output_directory/sentence.txt";
   unlink "$output_directory/sentence-repeat.txt";
+
+  if ($cloud) {
+    system("/opt/Morse-Code-Ninja-main/finish.py $cwd");
+  }
 }
 
 sub print_usage {
