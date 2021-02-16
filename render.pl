@@ -6,11 +6,17 @@ use File::Copy;
 use File::Path;
 use File::Spec;
 use Getopt::Long;
-use Log::Log4perl;
+use Log::Log4perl qw(:easy);
 
 my @speeds;
 sub print_usage;
-Log::Log4perl->init("/opt/Morse-Code-Ninja-main/log.conf");
+
+if (-f "/opt/ninja/log.conf") {
+  Log::Log4perl->init("/opt/ninja/log.conf");
+} else {
+  Log::Log4perl->easy_init($ERROR);
+}
+
 my $logger = Log::Log4perl::get_logger();
 
 GetOptions(
@@ -535,10 +541,9 @@ foreach(@sentences) {
           while($exit_code != 0) {
             my $textFile = File::Spec->rel2abs("$filename_base-${counter}");
               
-            print "execute text2speech.py: \"$textFile\" $text_to_speech_engine $lang\n";
-            $logger->info("execute text2speech.py: \"$textFile\" $text_to_speech_engine $lang");
-              
-            $exit_code = system("/opt/Morse-Code-Ninja-main/text2speech.py \"$textFile\" $text_to_speech_engine $lang");
+            print "execute ".getcwd()."/text2speech.py: \"$textFile\" $text_to_speech_engine $lang\n";
+            $logger->info("execute ".getcwd()."/text2speech.py: \"$textFile\" $text_to_speech_engine $lang");
+            $exit_code = system(getcwd()."/text2speech.py \"$textFile\" $text_to_speech_engine $lang");
             if ($? == -1) {
                 print "ERROR: text2speech.py failed to execute: $!\n";
                 $logger->error("text2speech.py failed to execute");
@@ -806,7 +811,7 @@ if(!$test) {
   unlink "$output_directory/sentence-repeat.txt";
 
   if ($cloud) {
-    system("/opt/Morse-Code-Ninja-main/finish.py $cwd");
+    system(getcwd()."/render/finish.py $cwd");
   }
 }
 
