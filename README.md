@@ -26,27 +26,52 @@ During the creation, attach the **AmazonPollyFullAccess** policy to the user.
 3. Edit the aws.properties file. Set the **key ID** and **secret access key**. As an alternative, 
 you may define AWS_KEY_ID and AWS_SECRET_ACCESS_KEY as environmental variables.
 
+4. Run this command to make sure that you don't accidentally check in your key! `git update-index --assume-unchanged aws.properties`
+
 
 # Usage
+#### EXAMPLE:
+    perl render.pl -i example.txt
+    
+#### NAME:
+    render.pl -- create mp3 audio files defined by an text file.
 
-1. Review and change as necessary the hardcoded configuration options at the top of the render.pl script.
+#### SYNOPSIS:
+    perl render.pl -i file [-o directory] [-s speeds] [-m max processes] [--test]
+                   [-l word limit] [--repeat] [--tone] [-e NEURAL | STANDARD] 
+                   [--sm] [--ss] [--sv] [-x] [--lang ENGLISH | SWEDISH]
 
-2. Execute within the checkout directory.
-```
-./render example.txt
-```
+Uses AWS Polly and requires valid credentials in the aws.properties file.<br/><br/>
+
+#### OPTIONS:
+
+##### Required:
+    -i, --input           name of the text file containing the script to render
+
+#### Optional:
+    -i, --input           name of the text file containing the script to render
+    -o, --output          directory to use for temporary files and output mp3 files
+    -c, --cache           directory to use for cache specific files
+    -s, --speeds          list of speeds in WPM. example -s 15 17 20
+    -m, --maxprocs        maximum number of parallel processes to run
+    --test                don't render audio -- just show what will be rendered -- useful when encoding text
+    -l, --limit           word limit. 14 works great... 15 word limit for long sentences; -1 disables it
+    -r, --repeat          repeat morse after speech
+    --tone                include the courtesy tone
+    -e, --engine          name of Polly speech engine to use: NEURAL or STANDARD
+    --sm, --silencemorse  length of silence between Morse code and spoken voice. Default 1 second.
+    --ss, --silencesets   length of silence between courtesy tone and next practice set. Default 1 second.
+    --sv, --silencevoice  length of silence between spoken voice and repeated morse code. Default 1 second.
+    -x, --extraspace      0 is no extra spacing. 0.5 is half word extra spacing. 1 is twice the word space. 1.5 is 2.5x the word space. etc
+    -l, --lang            language: ENGLISH or SWEDISH
 
 # General Notes
-The software has been used extensively to build the Morse Code Ninja Library,
-but it is far from user-friendly. There are many opportunities to improve it.
+The software has been used extensively to build the [Morse Code Ninja Library](https://morsecode.ninja/practice/index.html).
+There are many opportunities to improve it.
 
-Do not invoke more than one render.pl script at a time. The script would collide with itself if
-multiple copies were executing at the same time.
-
-The scripts have poor error handling. If something goes wrong, you may find it 
-difficult to isolate and correct the problem.
+Do not invoke more than one render.pl script at a time without specifying unique output directories. The script will collide with itself if
+multiple copies are executing at the same time using the same output directory.
 
 Be aware that the script can create a huge number of temporary files, which is proportional to the input file. Some types of filesystems will deal with this better than others.
 
-This set of scripts _should_ work on Linux and macOS, but it has only 
-been used on macOS.
+This set of scripts works on Linux and macOS.

@@ -1,9 +1,5 @@
 #!/usr/bin/env python
 
-"""
-#!/Users/kaz/anaconda3/bin/python
-"""
-
 import boto3
 import sys
 import re
@@ -11,10 +7,13 @@ import hashlib
 import os.path
 from os import environ
 import shutil
+import subprocess
 
 sentence_filename = sys.argv[1]
-engine_type = sys.argv[2]  # needs to be: standard | neural
+engine_type = sys.argv[2].lower()  # needs to be: standard | neural
 language = sys.argv[3]
+#cache_directory = 'cache/'
+cache_directory = sys.argv[4]
 
 # ERROR return codes (coordinate with render.pl for intelligent error handling)
 ioError = 2
@@ -23,6 +22,7 @@ working_directory = os.path.split(sentence_filename)[0]
 print("Engine:" + engine_type)
 print("Processing sentence filename: " + sentence_filename + ".txt")
 print("Working directory:" + working_directory)
+print("Cache directory: " + cache_directory)
 
 separator = "="
 aws_properties = {}
@@ -56,34 +56,59 @@ with open(sentence_filename + ".txt", "r") as sentence_file:
     sentence = sentence_file.readlines()[0]
 
 hex_digest = hashlib.sha256(sentence.encode('utf-8')).hexdigest()
-cache_filename = working_directory + '/cache/' + hex_digest + ".mp3"
+base_filename = engine_type + '-' + hex_digest + ".mp3"
+temp_filename = cache_directory + engine_type + "-" + hex_digest + "-temp.mp3"
+cache_filename = cache_directory + hex_digest + ".mp3"
 
-if not os.path.exists(cache_filename):
-    polly_client = boto3.Session(aws_access_key_id=aws_properties['aws_access_key_id'],
-                                 aws_secret_access_key=aws_properties['aws_secret_access_key'],
-                                 region_name='us-east-1').client('polly')
 
-    if(language == "ENGLISH"):
-        # short individual words are easier to understand spoken more slowly
-        if re.match(r"^\s*([A-Za-z]{1,4})\s*$", sentence):
-            print("Pronouncing slowly: " + sentence)
-            ssml = "<speak><prosody rate=\"x-slow\">" + sentence + "</prosody></speak>"
-            response = polly_client.synthesize_speech(Engine=engine_type, VoiceId='Matthew', OutputFormat='mp3', TextType="ssml", Text=ssml)
+def render(cache_filename, voice_id, text_type, text):
+    if not os.path.exists(cache_filename):
+        polly_client = boto3.Session(aws_access_key_id=aws_properties['aws_access_key_id'],
+                                     aws_secret_access_key=aws_properties['aws_secret_access_key'],
+                                     region_name='us-east-1').client('polly')
+        if text_type is None:
+            response = polly_client.synthesize_speech(Engine=engine_type, VoiceId=voice_id, OutputFormat='mp3', Text=text)
         else:
-            print("Pronouncing normal speed: " + sentence)
-            response = polly_client.synthesize_speech(Engine=engine_type, VoiceId='Matthew', OutputFormat='mp3', Text=sentence)
-            print("sentence" + sentence)
+            response = polly_client.synthesize_speech(Engine=engine_type, VoiceId=voice_id, OutputFormat='mp3',
+                                                      TextType=text_type, Text=text)
+
+        file = open(temp_filename, 'wb')
+        file.write(response['AudioStream'].read())
+        file.close()
+
+        subprocess.run(['lame', '--resample', '44.1', '-a', '-b', '256',
+                        temp_filename,
+                        cache_filename],
+                        stdout=subprocess.PIPE,
+                        universal_newlines=True)
+        
+        os.remove(temp_filename)
+
+    print("Cached filename:" + cache_filename)
+
+
+
+if language == "ENGLISH":
+    # short individual words are easier to understand spoken more slowly
+    if re.match(r"^\s*([A-Za-z]{1,4})\s*$", sentence):
+        print("Pronouncing slowly: " + sentence)
+        ssml = "<speak><prosody rate=\"x-slow\">" + sentence + "</prosody></speak>"
+        cache_filename = cache_directory + "Mathew-slowly-" + base_filename
+        render(cache_filename, 'Matthew', 'ssml', ssml)
     else:
-        voice_id = "Matthew"
-        if(language == "SWEDISH"):
-            voice_id = "Astrid"
-
-        print("Using Voice: " + voice_id)
-        response = polly_client.synthesize_speech(Engine=engine_type, VoiceId=voice_id, OutputFormat='mp3', Text=sentence)
+        print("Pronouncing normal speed: " + sentence)
+        cache_filename = cache_directory + "Mathew-standard-" + base_filename
+        render(cache_filename, voice_id='Matthew', text_type=None, text=sentence)
         print("sentence" + sentence)
+else:
+    voice_id = "Matthew"
 
-    file = open(cache_filename, 'wb')
-    file.write(response['AudioStream'].read())
-    file.close()
+    if language == "SWEDISH":
+        voice_id = "Astrid"
 
-shutil.copy2(cache_filename, sentence_filename + '-voice.mp3')
+    print("Using Voice: " + voice_id)
+    cache_filename = cache_directory + language + "-standard-" + base_filename
+    render(cache_filename, voice_id=voice_id, text_type=None, text=sentence)
+    print("sentence" + sentence)
+
+

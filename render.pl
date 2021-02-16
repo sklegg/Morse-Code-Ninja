@@ -1,5 +1,8 @@
 #!/usr/bin/perl
+
 use strict;
+use warnings;
+
 use Cwd;
 use File::Basename;
 use File::Copy;
@@ -7,6 +10,7 @@ use File::Path;
 use File::Spec;
 use Getopt::Long;
 use Log::Log4perl qw(:easy);
+use Digest::SHA qw(sha256_base64);
 
 my @speeds;
 sub print_usage;
@@ -22,6 +26,7 @@ my $logger = Log::Log4perl::get_logger();
 GetOptions(
   'i|input=s'         => \(my $input_filename),
   'o|output=s'        => \(my $output_directory = '.'),
+  'c|cache=s'         => \(my $cache_directory = './cache/'),
   's|speeds=s{1,}'    => \@speeds,
   'm|maxprocs=i'      => \(my $max_processes = 10),
   'test'              => \(my $test = ''), # flag. 1 = don't render audio -- just show what will be rendered -- useful when encoding text
@@ -37,6 +42,17 @@ GetOptions(
   'cloud'             => \(my $cloud = ''),
 ) or print_usage();
 
+if("$input_filename" eq "") {
+  print("***************************************\n");
+  print("Error: An input text file is required!!\n");
+  print("***************************************\n\n");
+  print("Example:\n");
+  print("./render.pl -i example.txt");
+  print("\n\n\n");
+
+  print_usage();
+}
+
 # set default value for speeds here as it is too complex to do it inside the GetOptions call above
 my $speedSize = @speeds;
 @speeds = ($speedSize > 0) ? @speeds : ("15", "17", "20", "22", "25", "28", "30", "35", "40", "45", "50");
@@ -47,6 +63,11 @@ $logger->info("Starting render.pl with options: input_filename: $input_filename,
 
 if (! -d "$output_directory") {
   mkdir "$output_directory";
+}
+
+$cache_directory = File::Spec->rel2abs( $cache_directory ) . "/" ;
+if (! -d "$cache_directory") {
+  mkdir "$cache_directory";
 }
 
 my $lower_lang_chars_regex = "a-z";
@@ -81,6 +102,7 @@ unless(open $fh, '<', $filename) {
   $logger->error("Can't open file $!");
   die "Can't open file $!";
 }
+my $filename_base_without_path = $file;
 
 my $file_content = do { local $/; <$fh> };
 close $fh;
@@ -149,11 +171,11 @@ if(!$test) {
 
   if (! -d "$output_directory/cache") {
       mkdir "$output_directory/cache";
-  }
+  }  
 }
 
 # Simple string trim function
-sub  trim {
+sub trim {
   my $s = shift;
   $logger->debug("trimming $s");
   $s =~ s/^\s+|\s+$//g;
@@ -316,6 +338,7 @@ my $sentence_count = 1;
 my $count = 1;
 my $is_sentence = 1;
 my $sentence;
+my %filename_map;
 open(my $fh_all, '>', "$filename_base-sentences.txt");
 open(my $fh_structure, '>', "$filename_base-structure.txt");
 
@@ -411,6 +434,66 @@ foreach(@sentences) {
               $fork_count--;
             }
 
+            if($speed =~ m/(\d+)\/(\d+)/) {
+              $speed = $1;
+              $farnsworth = $2;
+            }
+
+            my $rise_and_fall_time;
+            my $speed_as_num = int($speed);
+            if($speed_as_num < 35) {
+              $rise_and_fall_time = 100;
+            } elsif($speed_as_num >= 35 && $speed_as_num <= 40) {
+              $rise_and_fall_time = 150;
+            } else {
+              $rise_and_fall_time = 200;
+            }
+
+            my $lang_option = "";
+            if($lang ne "ENGLISH") {
+              $lang_option = "-u";
+            }
+
+            my $extra_word_spacing_option = "";
+            if ($extra_word_spacing != 0) {
+              $extra_word_spacing_option = "-W " . $extra_word_spacing;
+            }
+
+            my $ebookCmdBase = "ebook2cw $lang_option -R $rise_and_fall_time -F $rise_and_fall_time " .
+                "$extra_word_spacing_option -f 700 -w $speed -s 44100 ";
+            if ($farnsworth != 0) {
+              $ebookCmdBase = $ebookCmdBase . "-e $farnsworth ";
+            }
+
+            sub get_cached_filename {
+              my ($ebookCmdBase, $morse_text) = @_;
+
+              my $cached_file_hash = sha256_base64($ebookCmdBase . $morse_text);
+              $cached_file_hash =~ s/\///g;
+              my $cached_file = $cached_file_hash . ".mp3";
+
+              if (! -d "${cache_directory}ebook2cw") {
+                mkdir "${cache_directory}ebook2cw";
+              }
+
+              my $cached_filepath = $cache_directory . "ebook2cw/" . substr($cached_file_hash, 0, 2) . "/";
+
+              if (! -d "$cached_filepath") {
+                mkdir "$cached_filepath";
+              }
+
+              my $cached_file_with_path = $cached_filepath . $cached_file;
+              return $cached_file_with_path;
+            }
+
+            my $cached_filename = get_cached_filename($ebookCmdBase, $sentence_chunk);
+            $filename_map{"$counter-$speed"} = $cached_filename;
+
+            my $cached_repeat_filename = get_cached_filename($ebookCmdBase, $repeat_part);
+            if($repeat_morse != 0 && $word_limit == -1 && $repeat_part ne $sentence_part) {
+              $filename_map{"$counter-repeat-$speed"} = $cached_repeat_filename;
+            }
+
             my $pid = fork();
             die if not defined $pid;
             if($pid) {
@@ -420,74 +503,40 @@ foreach(@sentences) {
               $logger->info("fork() -- pid: $pid"); 
 
             } else {
-              #child process
-              if($speed =~ m/(\d+)\/(\d+)/) {
-                $speed = $1;
-                $farnsworth = $2;
-              }
 
-              my $rise_and_fall_time;
-              my $speed_as_num = int($speed);
-              if($speed_as_num < 35) {
-                $rise_and_fall_time = 100;
-              } elsif($speed_as_num >= 35 && $speed_as_num <= 40) {
-                $rise_and_fall_time = 150;
-              } else {
-                $rise_and_fall_time = 200;
-              }
+              if(! -f $cached_filename) {
+                $ebookCmd = $ebookCmdBase . "-o $output_directory/sentence-${speed} $output_directory/sentence.txt";
+                #print "cmd-6: $ebookCmd\n";
 
-              my $lang_option = "";
-              if($lang ne "ENGLISH") {
-                $lang_option = "-u";
-              }
+                system($ebookCmd) == 0 or die "ERROR 6: $ebookCmd failed, $!\n";
 
-              my $extra_word_spacing_option = "";
-              if ($extra_word_spacing != 0) {
-                $extra_word_spacing_option = "-W " . $extra_word_spacing;
-              }
+                unlink "$output_directory/sentence-lower-volume-$speed.mp3" if (-f "$output_directory/sentence-lower-volume-$speed.mp3");
 
-              $ebookCmd = "ebook2cw $lang_option -R $rise_and_fall_time -F $rise_and_fall_time " .
-                  "$extra_word_spacing_option -f 700 -w $speed -s 44100 ";
-              if ($farnsworth != 0) {
-                  $ebookCmd = $ebookCmd . "-e $farnsworth ";
-              }
-              $ebookCmd = $ebookCmd . "-o $output_directory/sentence-${speed} $output_directory/sentence.txt";
-              $logger->info("cmd-6: $ebookCmd"); # print "cmd-6: $ebookCmd\n";
-              if (system($ebookCmd) != 0) {
-                $logger->error("ERROR 6: $ebookCmd failed, $!");
-                die "ERROR 6: $ebookCmd failed, $!\n";
-              }
+                $cmd = "ffmpeg -i $output_directory/sentence-${speed}0000.mp3 -filter:a \"volume=0.5\" $output_directory/sentence-lower-volume-${speed}.mp3\n";
+                # print "cmd-7: $cmd\n";
+                system($cmd) == 0 or die "ERROR 7: $cmd failed, $!\n";
 
-              unlink "$output_directory/sentence-lower-volume-$speed.mp3" if (-f "$output_directory/sentence-lower-volume-$speed.mp3");
+                @cmdLst = ("lame", "--resample", "44.1", "-a", "-b", "256",
+                    "$output_directory/sentence-lower-volume-$speed.mp3",
+                    "$output_directory/sentence-lower-volume-$speed-resampled.mp3");
+                # print "cmdLst-16: @cmdLst\n";
+                system(@cmdLst) == 0 or die "ERROR: @cmdLst failed, $!\n";
 
-              $cmd = "ffmpeg -loglevel fatal -i $output_directory/sentence-${speed}0000.mp3 -filter:a \"volume=0.5\" $output_directory/sentence-lower-volume-${speed}.mp3\n";
-              $logger->info("cmd-7: $cmd"); # print "cmd-7: $cmd\n";
-              if (system($cmd) != 0) {
-                $logger->error("ERROR 7: $cmd failed, $!");
-                die "ERROR 7: $cmd failed, $!\n";
+                unlink "$output_directory/sentence-lower-volume-$speed.mp3" if (-f "$output_directory/sentence-lower-volume-$speed.mp3");
+                print "---- move($output_directory/sentence-lower-volume-$speed-resampled.mp3, $cached_filename)\n";
+                move("$output_directory/sentence-lower-volume-$speed-resampled.mp3", $cached_filename);
               }
-              
-              print "---- rename(sentence-lower-volume-${speed}.mp3, $filename_base-$counter-morse-$speed.mp3)\n";
-              $logger->info("rename(sentence-lower-volume-${speed}.mp3, $filename_base-$counter-morse-$speed.mp3)");
-              rename("$output_directory/sentence-lower-volume-$speed.mp3", "$filename_base-$counter-morse-$speed.mp3");
 
               # generate repeat section if it is different than the sentence
-              if($repeat_morse != 0 && $word_limit == -1 && $repeat_part ne $sentence_part) {
+              if($repeat_morse != 0 && $word_limit == -1 && $repeat_part ne $sentence_part && (! -f $cached_repeat_filename)) {
                 open(my $fh_repeat, '>', "$output_directory/sentence-repeat.txt");
                 print $fh_repeat "$repeat_part\n";
                 $logger->info("$fh_repeat $repeat_part");
                 close $fh_repeat;
 
-                $cmd = "ebook2cw $lang_option -R $rise_and_fall_time -F $rise_and_fall_time $extra_word_spacing_option -f 700 -w $speed -s 44100 -o $output_directory/sentence-repeat-${speed} ";
-                if ($farnsworth > 0) {
-                  $cmd = $cmd . "-e $farnsworth ";
-                }
-                $cmd = $cmd . "$output_directory/sentence-repeat.txt";
-                $logger->info("cmd-8: $cmd"); # print "cmd-8: $cmd\n";
-                if (system($cmd) != 0) {
-                   $logger->error("ERROR 8: $cmd failed, $!");
-                   die "ERROR 8: $cmd failed, $!\n";
-                }
+                $ebookCmd = $ebookCmdBase . "-o $output_directory/sentence-repeat-${speed} $output_directory/sentence-repeat.txt";
+                # print "cmd-8: $ebookCmd\n";
+                system($ebookCmd) == 0 or die "ERROR 8: $cmd failed, $!\n";
 
                 unlink "$output_directory/sentence-repeat-lower-volume-$speed.mp3" if (-f "$output_directory.sentence-repeat-lower-volume-$speed.mp3");
 
@@ -513,9 +562,15 @@ foreach(@sentences) {
                         exit 9;
                     }
                 }
-                
-                move("$output_directory/sentence-repeat-lower-volume-${speed}.mp3", "$filename_base-$counter-repeat-morse-$speed.mp3");
+                unlink "${output_directory}/sentence-repeat-${speed}0000.mp3";
 
+                @cmdLst = ("lame", "--resample", "44.1", "-a", "-b", "256",
+                    "$output_directory/sentence-repeat-lower-volume-${speed}.mp3",
+                    "$output_directory/sentence-repeat-lower-volume-${speed}-resampled.mp3");
+                # print "cmd-18: @cmdLst\n";
+                system(@cmdLst) == 0 or die "ERROR 18: @cmdLst failed, $!\n";
+
+                move("$output_directory/sentence-repeat-lower-volume-${speed}-resampled.mp3", $cached_repeat_filename);
               }   # repeat morse if clause
 
               exit;
@@ -540,22 +595,30 @@ foreach(@sentences) {
           my $exit_code = -1;
           while($exit_code != 0) {
             my $textFile = File::Spec->rel2abs("$filename_base-${counter}");
-              
-            print "execute ".getcwd()."/text2speech.py: \"$textFile\" $text_to_speech_engine $lang\n";
-            $logger->info("execute ".getcwd()."/text2speech.py: \"$textFile\" $text_to_speech_engine $lang");
-            $exit_code = system(getcwd()."/text2speech.py \"$textFile\" $text_to_speech_engine $lang");
-            if ($? == -1) {
+
+            my $cmd = getcwd()."/text2speech.py \"$textFile\" $text_to_speech_engine $lang $cache_directory";
+            print "execute $cmd\n";
+
+            my $output = `$cmd`;
+            print "$output";
+            $exit_code = $?;
+            $output =~ m/Cached filename:(.*)\n/;
+            my $voiced_filename = $1;
+            print "voiced_filename: $voiced_filename\n";
+            $filename_map{"$counter-voiced"} = $voiced_filename;
+            if ($exit_code == -1) {
                 print "ERROR: text2speech.py failed to execute: $!\n";
                 $logger->error("text2speech.py failed to execute");
                 exit 1;
             }
-            elsif ($? & 127) {
+            elsif ($exit_code & 127) {
                 printf "text2speech.py died with signal %d, %s coredump\n",
-                    ($? & 127), ($? & 128) ? 'with' : 'without';
+                    ($exit_code & 127), ($exit_code & 128) ? 'with' : 'without';
                 $logger->error("text2speech.py died");
                 exit 1;
-            } else {
-                my $ecode = $? >> 8;
+            }
+            else {
+                my $ecode = $exit_code >> 8;
                 printf "text2speech.py exited with value %d\n", $ecode;
                 $logger->info("text2speech.py exited with value $ecode");
 
@@ -589,7 +652,13 @@ foreach(@sentences) {
         rename("$output_directory/sentence.txt ", '$filename_base-$counter-full.txt');
         my $exit_code = -1;
         while($exit_code != 0) {
-          $exit_code = system('./text2speech.py '."$filename_base-${counter}-full $text_to_speech_engine $lang");
+          my $cmd = './text2speech.py '."$filename_base-${counter}-full $text_to_speech_engine $lang $cache_directory";
+          my $output = `$cmd`;
+          $output =~ m/^Cached filename:(.*)\n/;
+          my $full_voiced_filename = $1;
+          print "full voiced_filename: $full_voiced_filename\n";
+          $filename_map{"$counter-full-voiced"} = $full_voiced_filename;
+          $exit_code = $?;
         }
 
         $count++;
@@ -688,20 +757,8 @@ if(!$test) {
 
         #if full sentence
         if(-e "$filename_base-$counter-full-voice.mp3") {
-          print $fh_list "file '$cwd/pluck-softer-resampled.mp3'\nfile '$cwd/silence-resampled.mp3'\nfile '$filename_base-$counter-full-voice-resampled-$speed.mp3'\nfile '$cwd/silence-resampled.mp3'\n";
-          $logger->info("$fh_list file '$cwd/pluck-softer-resampled.mp3' file '$cwd/silence-resampled.mp3' file '$filename_base-$counter-full-voice-resampled-$speed.mp3' file '$cwd/silence-resampled.mp3'");
-
-          @cmdLst = ('lame', '--resample', '44.1', '-a', '-b', '256', "$filename_base-$counter-full-voice.mp3", "$filename_base-$counter-full-voice-resampled-$speed.mp3");
-          $logger->info("cmd-15: @cmdLst"); # print "cmdLst-15:\n";
-          foreach (@cmdLst) {
-              print "-- $_\n";
-              $logger->info("-- $_");
-          }
-          $logger->info("cmd-16: @cmdLst"); # print "cmd-16: @cmdLst\n";
-          if (system(@cmdLst) != 0) {
-            $logger->error("ERROR 16: @cmdLst failed, $!");
-            die "ERROR 16: @cmdLst failed, $!\n";
-          }
+          my $cached_full_voiced_filename = $filename_map{"$counter-full-voiced"};
+          print $fh_list "file '$cwd/pluck-softer-resampled.mp3'\nfile '$cwd/silence-resampled.mp3'\nfile '$cached_full_voiced_filename'\nfile '$cwd/silence-resampled.mp3'\n";
 
         } else {
           # Not full sentence\n";
@@ -712,52 +769,26 @@ if(!$test) {
             $logger->info("$fh_list file '$cwd/plink-softer-resampled.mp3'");
           }
 
-          @cmdLst = ("lame", "--resample", "44.1", "-a", "-b", "256",
-                     "$filename_base-$counter-morse-$speed.mp3",
-                     "$filename_base-$counter-morse-$speed-resampled.mp3");
-          $logger->info("cmd-16: @cmdLst"); # print "cmdLst-16: @cmdLst\n";
-          if (system(@cmdLst) != 0) {
-            $logger->error("ERROR 16: @cmdLst failed, $!");
-            die "ERROR 16: @cmdLst failed, $!\n";
-          }
-
-          @cmdLst = ("lame", "--resample", "44.1", "-a", "-b", "256",
-                     "$filename_base-$counter-voice.mp3",
-                     "$filename_base-$counter-voice-resampled-$speed.mp3");
-          $logger->info("cmd-17: @cmdLst"); # print "cmd-17: @cmdLst\n";
-          if (system(@cmdLst) != 0) {
-            $logger->error("ERROR 17: @cmdLst failed, $!");
-            die "ERROR 17: @cmdLst failed, $!\n";
-          }
-
-          print $fh_list "file '$cwd/silence-resampled.mp3'\nfile '$filename_base-$counter-morse-$speed-resampled.mp3'\nfile '$cwd/silence-resampled1.mp3'\nfile '$filename_base-$counter-voice-resampled-$speed.mp3'\n";
-          $logger->info("$fh_list file '$cwd/silence-resampled.mp3' file '$filename_base-$counter-morse-$speed-resampled.mp3' file '$cwd/silence-resampled1.mp3' file '$filename_base-$counter-voice-resampled-$speed.mp3'");
+          my $cached_filename = $filename_map{"$counter-$speed"};
+          my $cached_repeat_filename = $filename_map{"$counter-repeat-$speed"};
+          my $cached_voiced_filename = $filename_map{"$counter-voiced"};
+          #print "cached_filename: $cached_filename\n";
+          #print "cached_repeat_filename: $cached_repeat_filename\n";
+          print "cached_voiced_filename: $cached_voiced_filename\n";
+          print $fh_list "file '$cwd/silence-resampled.mp3'\nfile '$cached_filename'\nfile '$cwd/silence-resampled1.mp3'\nfile '$cached_voiced_filename'\n";
 
           if($repeat_morse == 0) {
             print $fh_list "file '$cwd/silence-resampled.mp3'\n";
             $logger->info("$fh_list file '$cwd/silence-resampled.mp3'\n");
           } else {
             print $fh_list "file '$cwd/silence-resampled2.mp3'\n";
-            $logger->info("$fh_list file '$cwd/silence-resampled2.mp3'\n");
-            if (-e "$filename_base-$counter-repeat-morse-$speed.mp3") {
-              @cmdLst = ("lame", "--resample", "44.1", "-a", "-b", "256",
-                         "$filename_base-$counter-repeat-morse-$speed.mp3",
-                         "$filename_base-$counter-repeat-morse-$speed-resampled.mp3");
-              $logger->info("cmd-18: @cmdLst"); # print "cmd-18: @cmdLst\n";
-              if (system(@cmdLst) != 0) {
-                $logger->error("ERROR 18: @cmdLst failed, $!");
-                die "ERROR 18: @cmdLst failed, $!\n";
-              }
 
-              print $fh_list "file '$filename_base-$counter-repeat-morse-$speed-resampled.mp3'\nfile '$cwd/silence-resampled.mp3'\n";
-              $logger->info("$fh_list file '$filename_base-$counter-repeat-morse-$speed-resampled.mp3' file '$cwd/silence-resampled.mp3'");
+            if (-e "$cached_repeat_filename") {
+              print $fh_list "file '$cached_repeat_filename'\nfile '$cwd/silence-resampled.mp3'\n";
             } else {
-
-              print $fh_list "file '$filename_base-$counter-morse-$speed-resampled.mp3'\nfile '$cwd/silence-resampled.mp3'\n";
-              $logger->info("$fh_list file '$filename_base-$counter-morse-$speed-resampled.mp3' file '$cwd/silence-resampled.mp3'");
+              print $fh_list "file '$cached_filename'\nfile '$cwd/silence-resampled.mp3'\n";
             }
           }
-
 
         }
       }
@@ -765,7 +796,7 @@ if(!$test) {
       #see -- https://superuser.com/questions/314239/how-to-join-merge-many-mp3-files  or   https://trac.ffmpeg.org/wiki/Concatenate
       @cmdLst = ("ffmpeg", "-loglevel", "fatal", "-f", "concat", "-safe", "0", "-i", 
                  "$filename_base-list-${speed}wpm.txt", "-codec:a", "libmp3lame", "-metadata",
-                 "title=\"$filename_base $speed"."wpm\"", "-c", "copy",
+                 "title=$filename_base_without_path ${speed}wpm", "-c", "copy",
                  "$filename_base-$speed"."wpm.mp3");
       $logger->info("cmd-19: @cmdLst"); # print "cmd-19: @cmdLst\n";
       if (system(@cmdLst) != 0) {
@@ -816,26 +847,34 @@ if(!$test) {
 }
 
 sub print_usage {
-  print "render.pl - create mp3 audio files defined by an text file. \nUses AWS Polly and requires valid credentials in the aws.properties file.\n\n";
+  print "\033[1mNAME:\033[0m\n";
+  print "  render.pl -- create mp3 audio files defined by an text file. \n\n";
 
-  print "usage: perl render.pl -i file [-o directory] [-s speeds] [-m max processes] [--test] [-l word limit]\n";
-  print "                      [--repeat] [--tone] [-e NEURAL | STANDARD] [--sm] [--ss] [--sv] [-x]\n";
-  print "                      [--lang ENGLISH | SWEDISH]\n\n";
+  print "\033[1mSYNOPSIS:\033[0m\n";
+  print "  perl render.pl -i file [-o directory] [-s speeds] [-m max processes] [--test] [-l word limit]\n";
+  print "                 [--repeat] [--tone] [-e NEURAL | STANDARD] [--sm] [--ss] [--sv] [-x]\n";
+  print "                 [--lang ENGLISH | SWEDISH]\n\n";
+  print "  Uses AWS Polly and requires valid credentials in the aws.properties file.\n\n";
 
-  print "Options:\n";
-  print "  -i, --input          name of the text file containing the script to render\n";
-  print "  -o, --output         directory to use for temporary files and output mp3 files\n";
-  print "  -s, --speeds         list of speeds in WPM. example -s 15 17 20\n";
-  print "  -m, --maxprocs       maximum number of parallel processes to run\n";
-  print "  --test               don't render audio -- just show what will be rendered -- useful when encoding text\n";
-  print "  -l, --limit          word limit. 14 works great... 15 word limit for long sentences; -1 disables it\n";
-  print "  -r, --repeat         repeat morse after speech\n";
-  print "  --tone               include the courtesy tone\n";
-  print "  -e, --engine         name of Polly speech engine to use: NEURAL or STANDARD\n";
-  print "  --sm, --silencemorse \n";
-  print "  --ss, --silencesets  \n";
-  print "  --sv, --silencevoice \n";
-  print "  -x, --extraspace     0 is no extra spacing. 0.5 is half word extra spacing. 1 is twice the word space. 1.5 is 2.5x the word space. etc\n";
-  print "  -l, --lang           language: ENGLISH or SWEDISH\n";
+  print "\033[1mOPTIONS:\033[0m\n";
+  print "  Required:\n";
+  print "    -i, --input          name of the text file containing the script to render\n\n";
+
+  print "  Optional:\n";
+  print "    -i, --input          name of the text file containing the script to render\n";
+  print "    -o, --output         directory to use for temporary files and output mp3 files\n";
+  print "    -c, --cache          directory to use for cache specific files\n";
+  print "    -s, --speeds         list of speeds in WPM. example -s 15 17 20\n";
+  print "    -m, --maxprocs       maximum number of parallel processes to run\n";
+  print "    --test               don't render audio -- just show what will be rendered -- useful when encoding text\n";
+  print "    -l, --limit          word limit. 14 works great... 15 word limit for long sentences; -1 disables it\n";
+  print "    -r, --repeat         repeat morse after speech\n";
+  print "    --tone               include the courtesy tone\n";
+  print "    -e, --engine         name of Polly speech engine to use: NEURAL or STANDARD\n";
+  print "    --sm, --silencemorse length of silence between Morse code and spoken voice. Default 1 second.\n";
+  print "    --ss, --silencesets  length of silence between courtesy tone and next practice set. Default 1 second.\n";
+  print "    --sv, --silencevoice length of silence between spoken voice and repeated morse code. Default 1 second.\n";
+  print "    -x, --extraspace     0 is no extra spacing. 0.5 is half word extra spacing. 1 is twice the word space. 1.5 is 2.5x the word space. etc\n";
+  print "    -l, --lang           language: ENGLISH or SWEDISH\n\n";
   die "";
-};
+}
