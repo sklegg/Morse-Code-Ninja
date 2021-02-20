@@ -842,8 +842,10 @@ if(!$test) {
   unlink "$output_directory/sentence-repeat.txt";
 
   if ($cloud) {
+    $logger->info("Calling finish script...");
     system(getcwd()."/render/finish.py $cwd");
   }
+  $logger->info("Render complete. Results in $cwd");
 }
 
 sub print_usage {
