@@ -737,7 +737,7 @@ if(!$test) {
       print("XXXXXX Fork 2 xXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXX\n");
       print("XXXXXXxXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXXXXXXXXxXXXXXXXXXXXXXXXXX\n");
       print("waiting on forks: fork_count: $fork_count     max_processes: $max_processes\n");
-      $logger-info("waiting on forks: fork_count: $fork_count     max_processes: $max_processes");
+      $logger->info("waiting on forks: fork_count: $fork_count     max_processes: $max_processes");
       wait();
       $fork_count--;
     }

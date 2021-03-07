@@ -25,7 +25,7 @@ def get_aws_creds():
         except IOError as e:
             print(f"I/O error reading aws.properties: {e.errno}, {e.strerror}")
 
-            print("text2speech script does not have AWS credentials.")
+            print("upload2s3 script does not have AWS credentials.")
 
     return aws_properties
 

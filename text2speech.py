@@ -30,6 +30,7 @@ aws_properties = {}
 if "AWS_KEY_ID" in environ and "AWS_SECRET_ACCESS_KEY" in environ:
     aws_properties['aws_access_key_id'] = environ['AWS_KEY_ID']
     aws_properties['aws_secret_access_key'] = environ['AWS_SECRET_ACCESS_KEY']
+    aws_properties['aws_session_token'] = environ['AWS_SESSION_TOKEN']
 else:
     try:
         with open('aws.properties') as property_file:
@@ -65,6 +66,7 @@ def render(cache_filename, voice_id, text_type, text):
     if not os.path.exists(cache_filename):
         polly_client = boto3.Session(aws_access_key_id=aws_properties['aws_access_key_id'],
                                      aws_secret_access_key=aws_properties['aws_secret_access_key'],
+                                     aws_session_token=aws_properties['aws_session_token'],
                                      region_name='us-east-1').client('polly')
         if text_type is None:
             response = polly_client.synthesize_speech(Engine=engine_type, VoiceId=voice_id, OutputFormat='mp3', Text=text)
