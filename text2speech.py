@@ -6,13 +6,12 @@ import re
 import hashlib
 import os.path
 from os import environ
-import shutil
 import subprocess
 
 sentence_filename = sys.argv[1]
 engine_type = sys.argv[2].lower()  # needs to be: standard | neural
 language = sys.argv[3]
-#cache_directory = 'cache/'
+# cache_directory = 'cache/'
 cache_directory = sys.argv[4]
 
 # ERROR return codes (coordinate with render.pl for intelligent error handling)
@@ -27,10 +26,13 @@ print("Cache directory: " + cache_directory)
 separator = "="
 aws_properties = {}
 
+aws_properties['aws_session_token'] = None
+if "AWS_SESSION_TOKEN" in environ:
+    aws_properties['aws_session_token'] = environ['AWS_SESSION_TOKEN']
+
 if "AWS_KEY_ID" in environ and "AWS_SECRET_ACCESS_KEY" in environ:
     aws_properties['aws_access_key_id'] = environ['AWS_KEY_ID']
     aws_properties['aws_secret_access_key'] = environ['AWS_SECRET_ACCESS_KEY']
-    aws_properties['aws_session_token'] = environ['AWS_SESSION_TOKEN']
 else:
     try:
         with open('aws.properties') as property_file:
@@ -79,15 +81,12 @@ def render(cache_filename, voice_id, text_type, text):
         file.close()
 
         subprocess.run(['lame', '--resample', '44.1', '-a', '-b', '256',
-                        temp_filename,
-                        cache_filename],
-                        stdout=subprocess.PIPE,
-                        universal_newlines=True)
-        
+                        temp_filename, cache_filename],
+                       stdout=subprocess.PIPE, universal_newlines=True)
+
         os.remove(temp_filename)
 
     print("Cached filename:" + cache_filename)
-
 
 
 if language == "ENGLISH":
@@ -112,5 +111,3 @@ else:
     cache_filename = cache_directory + language + "-standard-" + base_filename
     render(cache_filename, voice_id=voice_id, text_type=None, text=sentence)
     print("sentence" + sentence)
-
-
